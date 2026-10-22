@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ping Pong</title>
+<style>
+  :root { --bg:#0b1020; --fg:#e8ecff; --accent:#4ade80; --accent2:#60a5fa; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:flex; flex-direction:column; align-items:center;
+         justify-content:center; gap:12px; background:var(--bg); color:var(--fg);
+         font-family:system-ui,sans-serif; padding:16px; }
+  h1 { margin:0; letter-spacing:4px; font-size:1.6rem; }
+  canvas { width:100%; max-width:800px; aspect-ratio:2/1; background:#000; border:3px solid var(--fg);
+           border-radius:8px; touch-action:none; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; align-items:center; }
+  button, select { background:#1c2547; color:var(--fg); border:1px solid #3b4a85; border-radius:6px;
+           padding:8px 14px; font-size:1rem; cursor:pointer; }
+  button:hover { background:#27336a; }
+  p { margin:0; opacity:.7; font-size:.9rem; text-align:center; }
+</style>
+</head>
+<body>
+<h1>PING PONG</h1>
+<div class="row">
+  <select id="mode">
+    <option value="cpu">1 jogador (vs CPU)</option>
+    <option value="two">2 jogadores</option>
+  </select>
+  <select id="level">
+    <option value="0.5">Fácil</option>
+    <option value="0.75" selected>Médio</option>
+    <option value="1">Difícil</option>
+  </select>
+  <button id="start">Iniciar / Pausar</button>
+</div>
+<canvas id="c" width="800" height="400"></canvas>
+<p>Jogador 1: <b>W / S</b> · Jogador 2: <b>↑ / ↓</b> · Espaço pausa · No celular, arraste o dedo na tela · Primeiro a 7 vence</p>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const PW = 12, PH = 80, BR = 8, WIN = 7;
+
+const state = {
+  running: false, over: false,
+  p1: { y: H/2 - PH/2, score: 0 },
+  p2: { y: H/2 - PH/2, score: 0 },
+  ball: { x: W/2, y: H/2, vx: 0, vy: 0 },
+  msg: 'Pressione Espaço ou Iniciar'
+};
+const keys = {};
+
+function serve(dir) {
+  const b = state.ball;
+  b.x = W/2; b.y = H/2;
+  const angle = (Math.random() - 0.5) * Math.PI / 3;
+  b.vx = Math.cos(angle) * 5 * (dir || (Math.random() < 0.5 ? 1 : -1));
+  b.vy = Math.sin(angle) * 5;
+}
+
+function reset() {
+  state.p1.score = state.p2.score = 0;
+  state.p1.y = state.p2.y = H/2 - PH/2;
+  state.over = false;
+  serve();
+}
+
+function toggle() {
+  if (state.over) reset();
+  state.running = !state.running;
+  state.msg = state.running ? '' : 'Pausado';
+}
+
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+function update() {
+  if (!state.running) return;
+  const sp = 6, b = state.ball, mode = document.getElementById('mode').value;
+  if (keys['w']) state.p1.y -= sp;
+  if (keys['s']) state.p1.y += sp;
+  if (mode === 'two') {
+    if (keys['arrowup']) state.p2.y -= sp;
+    if (keys['arrowdown']) state.p2.y += sp;
+  } else {
+    const k = parseFloat(document.getElementById('level').value);
+    const target = b.y - PH/2;
+    const diff = target - state.p2.y;
+    const max = 4.5 * k;
+    if (b.vx > 0 || k === 1) state.p2.y += clamp(diff, -max, max);
+  }
+  state.p1.y = clamp(state.p1.y, 0, H - PH);
+  state.p2.y = clamp(state.p2.y, 0, H - PH);
+
+  b.x += b.vx; b.y += b.vy;
+  if (b.y < BR) { b.y = BR; b.vy *= -1; }
+  if (b.y > H - BR) { b.y = H - BR; b.vy *= -1; }
+
+  // paddles
+  const hit = (px, py, dir) => {
+    if (b.vx * dir < 0 && Math.abs(b.x - px) < PW/2 + BR && b.y > py - BR && b.y < py + PH + BR) {
+      const rel = (b.y - (py + PH/2)) / (PH/2);
+      const speed = Math.min(Math.hypot(b.vx, b.vy) * 1.06, 14);
+      const ang = rel * Math.PI / 3.2;
+      b.vx = Math.cos(ang) * speed * dir;
+      b.vy = Math.sin(ang) * speed;
+      b.x = px + dir * (PW/2 + BR);
+    }
+  };
+  hit(20 + PW/2, state.p1.y, 1);
+  hit(W - 20 - PW/2, state.p2.y, -1);
+
+  if (b.x < -BR) { state.p2.score++; point(1); }
+  if (b.x > W + BR) { state.p1.score++; point(-1); }
+}
+
+function point(dir) {
+  if (state.p1.score >= WIN || state.p2.score >= WIN) {
+    state.running = false; state.over = true;
+    const two = document.getElementById('mode').value === 'two';
+    const w = state.p1.score >= WIN ? 'Jogador 1' : (two ? 'Jogador 2' : 'CPU');
+    state.msg = w + ' venceu! Espaço para jogar de novo';
+    return;
+  }
+  serve(dir);
+}
+
+function draw() {
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#334'; ctx.setLineDash([10, 12]); ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(W/2, 0); ctx.lineTo(W/2, H); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#e8ecff'; ctx.font = 'bold 48px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText(state.p1.score, W/2 - 70, 60);
+  ctx.fillText(state.p2.score, W/2 + 70, 60);
+  ctx.fillStyle = '#4ade80'; ctx.fillRect(20, state.p1.y, PW, PH);
+  ctx.fillStyle = '#60a5fa'; ctx.fillRect(W - 20 - PW, state.p2.y, PW, PH);
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(state.ball.x, state.ball.y, BR, 0, 7); ctx.fill();
+  if (state.msg) {
+    ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(0, H/2 - 28, W, 56);
+    ctx.fillStyle = '#fff'; ctx.font = '22px system-ui'; ctx.fillText(state.msg, W/2, H/2 + 8);
+  }
+}
+
+function loop() { update(); draw(); requestAnimationFrame(loop); }
+
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k === ' ') { e.preventDefault(); toggle(); return; }
+  keys[k] = true;
+  if (k.startsWith('arrow')) e.preventDefault();
+});
+addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+document.getElementById('start').onclick = e => { toggle(); e.target.blur(); };
+
+// toque / mouse: controla a raquete do jogador 1
+function pointer(e) {
+  const r = canvas.getBoundingClientRect();
+  const y = (e.clientY - r.top) * (H / r.height);
+  state.p1.y = clamp(y - PH/2, 0, H - PH);
+}
+canvas.addEventListener('pointermove', pointer);
+canvas.addEventListener('pointerdown', e => { pointer(e); if (!state.running) toggle(); });
+
+reset(); state.running = false; state.msg = 'Pressione Espaço ou Iniciar';
+loop();
+</script>
+</body>
+</html>
